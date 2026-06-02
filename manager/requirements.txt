@@ -1,3 +1,5 @@
 cryptography
 streamlit
 streamlit-autorefresh
+customtkinter
+tkinterdnd2

@@ -26,14 +26,19 @@ static std::vector<uint8_t> read_file(const std::string& path) {
     return buffer;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     std::cout << "=== Distributed File Sharing Client ===" << std::endl;
     std::cout << "Manager: " << MANAGER_HOST << ":" << MANAGER_PORT << std::endl;
     std::cout << std::endl;
 
     std::string filepath;
-    std::cout << "Enter file path to upload: ";
-    std::getline(std::cin, filepath);
+
+    if (argc > 1) {
+        filepath = argv[1];
+    } else {
+        std::cout << "Enter file path to upload: ";
+        std::getline(std::cin, filepath);
+    }
 
     if (filepath.empty()) {
         std::cerr << "error: no file path provided" << std::endl;

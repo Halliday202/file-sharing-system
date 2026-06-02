@@ -1,6 +1,7 @@
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.security.SecureRandom;
 
 public class CryptoUtil {
 
@@ -37,5 +38,24 @@ public class CryptoUtil {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
         return cipher.doFinal(ciphertext);
+    }
+
+    public static byte[] encrypt(byte[] plaintext) throws Exception {
+        byte[] iv = new byte[IV_LENGTH];
+        new SecureRandom().nextBytes(iv);
+
+        byte[] keyBytes = hexToBytes(AES_KEY_HEX);
+        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
+        IvParameterSpec ivSpec = new IvParameterSpec(iv);
+
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
+        byte[] ciphertext = cipher.doFinal(plaintext);
+
+        // return IV || ciphertext
+        byte[] result = new byte[IV_LENGTH + ciphertext.length];
+        System.arraycopy(iv, 0, result, 0, IV_LENGTH);
+        System.arraycopy(ciphertext, 0, result, IV_LENGTH, ciphertext.length);
+        return result;
     }
 }

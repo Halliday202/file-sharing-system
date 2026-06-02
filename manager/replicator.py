@@ -130,3 +130,92 @@ async def replicate_eventual(packet_bytes, file_id, filename):
         asyncio.create_task(
             _send_to_node(host, port, packet_bytes, file_id, filename)
         )
+
+
+def get_file_list():
+    """return the metadata directory for the download list"""
+    with _lock:
+        meta = _state.get("metadata", {})
+    files = []
+    for fid, info in meta.items():
+        nodes = info.get("nodes", {})
+        saved_nodes = [p for p, s in nodes.items() if s == "saved"]
+        if saved_nodes:
+            files.append({
+                "id": fid,
+                "filename": info.get("filename", "?"),
+                "timestamp": info.get("timestamp", "?"),
+                "nodes": saved_nodes,
+            })
+    return files
+
+
+async def fetch_from_node(filename, file_id):
+    """
+    connect to an available java node and request a file download.
+    returns the raw encrypted payload bytes, or raises on failure.
+    """
+    with _lock:
+        health = dict(_state.get("node_health", {}))
+
+    # pick the first node that is "up", fall back to any node
+    target = None
+    for host, port in STORAGE_NODES:
+        if health.get(str(port)) == "up":
+            target = (host, port)
+            break
+    if target is None:
+        target = STORAGE_NODES[0]
+
+    host, port = target
+
+    # build a download request packet
+    header = json.dumps({
+        "type": "download",
+        "filename": filename,
+        "id": file_id,
+        "payloadSize": 0,
+    })
+    request = (header + "\n\n").encode("utf-8")
+
+    reader, writer = await asyncio.open_connection(host, port)
+    writer.write(request)
+    await writer.drain()
+
+    # read the response header up to \n\n
+    resp_buf = bytearray()
+    while True:
+        byte = await reader.read(1)
+        if not byte:
+            writer.close()
+            raise Exception(f"node {port} closed connection before response header")
+        resp_buf.extend(byte)
+        if resp_buf[-2:] == b"\n\n":
+            break
+
+    resp_header_str = resp_buf[:-2].decode("utf-8").strip()
+    resp_header = json.loads(resp_header_str)
+
+    if resp_header.get("status") == "error":
+        writer.close()
+        raise Exception(resp_header.get("reason", "unknown error from node"))
+
+    payload_size = int(resp_header.get("payloadSize", 0))
+
+    # read the encrypted payload
+    payload = bytearray()
+    while len(payload) < payload_size:
+        chunk = await reader.read(payload_size - len(payload))
+        if not chunk:
+            break
+        payload.extend(chunk)
+
+    writer.close()
+    try:
+        await writer.wait_closed()
+    except Exception:
+        pass
+
+    _update_node_health(port, "up")
+
+    return bytes(payload)
